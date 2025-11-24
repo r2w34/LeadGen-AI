@@ -4,15 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 12000 --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --port 12000 --host 0.0.0.0",
+    "start": "vite preview --port 12000 --host 0.0.0.0"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
     "@google/genai": "^1.30.0",
-    "lucide-react": "^0.554.0"
+    "@sendgrid/mail": "^8.1.6",
+    "@supabase/supabase-js": "^2.84.0",
+    "dotenv": "^17.2.3",
+    "lucide-react": "^0.554.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

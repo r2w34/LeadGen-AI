@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
   LayoutGrid, Search, Users, Settings, Zap, 
-  Briefcase, Bell, ChevronRight, Send, Image as ImageIcon, Shield, LogOut
+  Briefcase, Bell, ChevronRight, Send, Shield, LogOut
 } from 'lucide-react';
 import { AppView } from '../types';
 
@@ -22,7 +22,6 @@ const Navigation: React.FC<NavigationProps> = ({ currentView, setView, isProfile
     { view: AppView.FINDER, icon: Search, label: "Lead Finder" },
     { view: AppView.RESULTS, icon: Users, label: "CRM" },
     { view: AppView.OUTREACH, icon: Send, label: "Outreach" },
-    { view: AppView.MEDIA_STUDIO, icon: ImageIcon, label: "Media Studio" },
     { view: AppView.PROFILE, icon: Briefcase, label: "Business Profile" },
   ];
 
@@ -55,13 +54,13 @@ const Navigation: React.FC<NavigationProps> = ({ currentView, setView, isProfile
             <button
               key={item.label}
               onClick={() => setView(item.view)}
-              disabled={!isProfileReady && item.view !== AppView.PROFILE && item.view !== AppView.MEDIA_STUDIO}
+              disabled={!isProfileReady && item.view !== AppView.PROFILE}
               className={`
                 w-full flex items-center h-9 rounded-md px-3 text-sm font-medium transition-colors
                 ${currentView === item.view 
                   ? 'bg-zinc-900 text-zinc-100' 
                   : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/50'}
-                ${(!isProfileReady && item.view !== AppView.PROFILE && item.view !== AppView.MEDIA_STUDIO) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                ${(!isProfileReady && item.view !== AppView.PROFILE) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
             >
               <item.icon className="w-4 h-4 mr-3 opacity-80" />

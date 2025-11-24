@@ -611,6 +611,5 @@ export enum AppView {
   SETTINGS = 'SETTINGS',
   CLEANER = 'CLEANER',
   PROFILE = 'PROFILE',
-  MEDIA_STUDIO = 'MEDIA_STUDIO',
   ADMIN = 'ADMIN'
 }

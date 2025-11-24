@@ -18,7 +18,6 @@ import LeadDetailPanel from './components/LeadDetailView';
 import CRMCleaner from './components/CRMCleaner';
 import LandingPage from './components/LandingPage';
 import OutreachCenter from './components/OutreachCenter';
-import MediaStudio from './components/MediaStudio';
 import AdminPanel from './components/AdminPanel';
 import LoginScreen from './components/LoginScreen';
 import { generateOutreachTemplates } from './services/gemini';
@@ -188,8 +187,6 @@ const App: React.FC = () => {
           smtpConfig={smtpConfig}
           onSaveSMTP={setSmtpConfig}
         />;
-      case AppView.MEDIA_STUDIO:
-        return <MediaStudio />;
       case AppView.ADMIN:
         return <AdminPanel />;
       case AppView.SETTINGS:
