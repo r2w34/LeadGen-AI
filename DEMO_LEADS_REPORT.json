@@ -1,0 +1,26 @@
+[
+  {
+    "business_name": "TechFlow Solutions",
+    "website": "https://techflow.example.com",
+    "lead_score": 95,
+    "confidence": 92,
+    "sources": ["Google Maps", "Website", "LinkedIn"],
+    "status": "Verified"
+  },
+  {
+    "business_name": "GreenLeaf Medical",
+    "website": "https://greenleaf.example.com",
+    "lead_score": 89,
+    "confidence": 88,
+    "sources": ["Website", "Medical Registry"],
+    "status": "Verified"
+  },
+  {
+    "business_name": "Urban Design Studio",
+    "website": "https://urbandesign.example.com",
+    "lead_score": 82,
+    "confidence": 75,
+    "sources": ["Google Maps"],
+    "status": "Estimated"
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "name": "LeadGen AI",
+  "description": "An AI-powered lead finder that uses Google Search and Maps to identify, analyze, and generate highly relevant business leads based on your company profile.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
