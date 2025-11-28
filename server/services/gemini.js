@@ -1,60 +1,124 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 
 dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 /**
- * Search for company information using Gemini AI
+ * Search Google for company information
+ */
+async function searchGoogle(companyName) {
+  try {
+    // Try to search via Google Custom Search API if available
+    if (process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_ENGINE_ID) {
+      const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
+      const cx = process.env.GOOGLE_SEARCH_ENGINE_ID;
+      const query = encodeURIComponent(`${companyName} official website`);
+      const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${query}&num=3`;
+      
+      const response = await fetch(url, { timeout: 10000 });
+      const data = await response.json();
+      
+      if (data.items && data.items.length > 0) {
+        return {
+          website: data.items[0].link,
+          snippet: data.items[0].snippet,
+          title: data.items[0].title,
+          results: data.items.slice(0, 3).map(item => ({
+            title: item.title,
+            link: item.link,
+            snippet: item.snippet
+          }))
+        };
+      }
+    }
+    
+    // If no API key or API fails, return basic info
+    return null;
+  } catch (error) {
+    console.error('Google search error:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Search for company information using Gemini AI with Google Search enhancement
  */
 export async function findCompany(companyName, additionalInfo = '', modelName = 'gemini-2.5-pro') {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
+  // First, try to get real data from Google search
+  const searchResults = await searchGoogle(companyName);
+  
   const model = genAI.getGenerativeModel({ 
     model: modelName,
+    generationConfig: {
+      temperature: 0.1, // Lower temperature for more factual responses
+    }
   });
 
-  const prompt = `You are a business intelligence expert with access to comprehensive business databases. Find detailed information about the company "${companyName}".
-${additionalInfo ? `Additional context: ${additionalInfo}` : ''}
+  let prompt = `You are a business intelligence expert. Find detailed information about the company "${companyName}".
+${additionalInfo ? `Additional context: ${additionalInfo}` : ''}`;
 
-Search for and provide REAL, VERIFIED information. If the company exists, provide detailed data. If you cannot find real information, clearly indicate what is unknown.
+  // If we have Google search results, include them
+  if (searchResults) {
+    prompt += `\n\nI found these search results for "${companyName}":\n`;
+    prompt += `Website: ${searchResults.website}\n`;
+    prompt += `Description: ${searchResults.snippet}\n`;
+    if (searchResults.results) {
+      prompt += `\nTop search results:\n`;
+      searchResults.results.forEach((result, i) => {
+        prompt += `${i + 1}. ${result.title} - ${result.link}\n   ${result.snippet}\n`;
+      });
+    }
+    prompt += `\nUse this REAL search data as the primary source. `;
+  } else {
+    prompt += `\n\nIMPORTANT: Search your knowledge base for REAL, VERIFIED information about this company. `;
+  }
+
+  prompt += `Provide accurate details based on what you know or can infer from the search results.
 
 Return a JSON object with this EXACT structure (no markdown, just JSON):
 {
   "success": true,
   "companyName": "Official company name",
-  "website": "Official website URL",
-  "location": "City, Country",
+  "website": "${searchResults?.website || 'Official website URL'}",
+  "location": "City, Country (or 'Not specified' if unknown)",
   "industry": "Specific industry",
   "description": "Professional description (2-3 sentences)",
-  "founders": ["Founder names"],
+  "founders": ["Founder names if known, otherwise empty array"],
   "keyPeople": [{"name": "Name", "role": "Title"}],
-  "techStack": ["Technologies"],
+  "techStack": ["Technologies they likely use"],
   "socialProfiles": {
-    "linkedin": "LinkedIn URL",
-    "twitter": "Twitter URL",
-    "facebook": "Facebook URL"
+    "linkedin": "LinkedIn URL if known",
+    "twitter": "Twitter URL if known",
+    "facebook": "Facebook URL if known"
   },
   "financials": {
-    "revenueRange": "Revenue estimate",
-    "funding": "Funding info",
-    "teamSize": "Team size estimate"
+    "revenueRange": "Revenue estimate or 'Not available'",
+    "funding": "Funding info or 'Not available'",
+    "teamSize": "Team size estimate or 'Not available'"
   },
   "markets": {
     "primary": "Primary market",
     "targetAudience": "Who they sell to"
   },
-  "confidence": "high"
+  "confidence": "${searchResults ? 'high' : 'medium'}"
 }
 
-If company not found:
-{
-  "success": false,
-  "error": "Company not found"
-}`;
+IMPORTANT RULES:
+1. If you have search results above, use them as the primary source
+2. Use the website URL from search results
+3. Be honest - if you don't know something, use "Not specified" or "Not available"
+4. For well-known companies, provide detailed information
+5. If the company is unknown or you're unsure, still return success:true but with limited data
+6. NEVER return success:false unless the company name is clearly invalid
+
+Even if information is limited, always try to return a profile with whatever data is available.`;
 
   try {
     const result = await model.generateContent(prompt);
@@ -85,12 +149,17 @@ If company not found:
       return null;
     }
     
+    // Ensure website from search results is used if available
+    if (searchResults && searchResults.website) {
+      data.website = searchResults.website;
+    }
+    
     // Transform to expected format
     return {
       companyName: data.companyName || companyName,
       website: data.website || '',
-      location: data.location || 'Unknown',
-      industry: data.industry || 'Unknown',
+      location: data.location || 'Not specified',
+      industry: data.industry || 'Not specified',
       description: data.description || 'No description available',
       founders: data.founders || [],
       keyPeople: data.keyPeople || [],
@@ -100,7 +169,11 @@ If company not found:
       markets: data.markets || {},
       keywords: [...(data.techStack || []), data.industry].filter(Boolean).join(', '),
       targetAudience: data.markets?.targetAudience || '',
-      confidence: data.confidence || 'medium'
+      confidence: data.confidence || 'medium',
+      searchData: searchResults ? {
+        foundViaGoogle: true,
+        topResults: searchResults.results?.length || 0
+      } : { foundViaGoogle: false }
     };
   } catch (error) {
     console.error('Company search error:', error.message);
