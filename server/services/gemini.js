@@ -44,6 +44,70 @@ async function searchGoogle(companyName) {
 }
 
 /**
+ * Fetch and extract content from a website URL
+ */
+async function fetchWebsiteContent(url) {
+  try {
+    console.log(`Fetching website content from: ${url}`);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 10000
+    });
+    
+    if (!response.ok) {
+      console.log(`Website fetch failed: ${response.status}`);
+      return null;
+    }
+    
+    const html = await response.text();
+    
+    // Extract text content (remove HTML tags)
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Get first 2000 characters of clean text
+    const content = text.substring(0, 2000);
+    
+    // Extract meta description if available
+    const metaMatch = html.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i);
+    const description = metaMatch ? metaMatch[1] : '';
+    
+    // Extract title
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    const title = titleMatch ? titleMatch[1] : '';
+    
+    return {
+      url,
+      title,
+      description,
+      content,
+      found: true
+    };
+  } catch (error) {
+    console.error(`Error fetching website ${url}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Check if a string is a URL
+ */
+function isURL(str) {
+  try {
+    new URL(str);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Search for company information using Gemini AI with Google Search enhancement
  */
 export async function findCompany(companyName, additionalInfo = '', modelName = 'gemini-2.5-pro') {
@@ -51,8 +115,21 @@ export async function findCompany(companyName, additionalInfo = '', modelName = 
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  // First, try to get real data from Google search
-  const searchResults = await searchGoogle(companyName);
+  let websiteData = null;
+  let searchResults = null;
+  
+  // Check if additionalInfo is a URL - if so, fetch the website directly
+  if (additionalInfo && isURL(additionalInfo)) {
+    console.log(`Additional info is a URL, fetching website: ${additionalInfo}`);
+    websiteData = await fetchWebsiteContent(additionalInfo);
+    if (!websiteData) {
+      console.log('Website fetch failed, trying Google search...');
+      searchResults = await searchGoogle(companyName);
+    }
+  } else {
+    // Try to get real data from Google search
+    searchResults = await searchGoogle(companyName);
+  }
   
   const model = genAI.getGenerativeModel({ 
     model: modelName,
@@ -61,11 +138,18 @@ export async function findCompany(companyName, additionalInfo = '', modelName = 
     }
   });
 
-  let prompt = `You are a business intelligence expert. Find detailed information about the company "${companyName}".
-${additionalInfo ? `Additional context: ${additionalInfo}` : ''}`;
+  let prompt = `You are a business intelligence expert. Find detailed information about the company "${companyName}".`;
 
-  // If we have Google search results, include them
-  if (searchResults) {
+  // If we have website data from direct URL fetch
+  if (websiteData) {
+    prompt += `\n\nI have VERIFIED the company website at ${websiteData.url}:\n`;
+    prompt += `Website Title: ${websiteData.title}\n`;
+    prompt += `Meta Description: ${websiteData.description}\n`;
+    prompt += `Website Content:\n${websiteData.content}\n`;
+    prompt += `\nThis is REAL, VERIFIED data from their actual website. Use this as the PRIMARY source.`;
+  }
+  // If we have Google search results
+  else if (searchResults) {
     prompt += `\n\nI found these search results for "${companyName}":\n`;
     prompt += `Website: ${searchResults.website}\n`;
     prompt += `Description: ${searchResults.snippet}\n`;
@@ -75,28 +159,35 @@ ${additionalInfo ? `Additional context: ${additionalInfo}` : ''}`;
         prompt += `${i + 1}. ${result.title} - ${result.link}\n   ${result.snippet}\n`;
       });
     }
-    prompt += `\nUse this REAL search data as the primary source. `;
-  } else {
-    prompt += `\n\nIMPORTANT: Search your knowledge base for REAL, VERIFIED information about this company. `;
+    prompt += `\nUse this REAL search data as the primary source.`;
+  }
+  // Neither website nor search results
+  else {
+    if (additionalInfo) {
+      prompt += `\n\nAdditional context: ${additionalInfo}`;
+    }
+    prompt += `\n\nIMPORTANT: Search your knowledge base for REAL, VERIFIED information about this company.`;
   }
 
-  prompt += `Provide accurate details based on what you know or can infer from the search results.
+  const websiteUrl = websiteData?.url || searchResults?.website || '';
+  
+  prompt += `\n\nProvide accurate details based on the verified data above or your knowledge.
 
 Return a JSON object with this EXACT structure (no markdown, just JSON):
 {
   "success": true,
-  "companyName": "Official company name",
-  "website": "${searchResults?.website || 'Official website URL'}",
-  "location": "City, Country (or 'Not specified' if unknown)",
-  "industry": "Specific industry",
-  "description": "Professional description (2-3 sentences)",
-  "founders": ["Founder names if known, otherwise empty array"],
+  "companyName": "Official company name from the website/data",
+  "website": "${websiteUrl || 'Website URL if known'}",
+  "location": "City, Country (extract from website if available, or 'Not specified')",
+  "industry": "Specific industry (infer from website content)",
+  "description": "Professional description (2-3 sentences based on website content)",
+  "founders": ["Founder names if mentioned on website, otherwise empty"],
   "keyPeople": [{"name": "Name", "role": "Title"}],
-  "techStack": ["Technologies they likely use"],
+  "techStack": ["Technologies they use (infer from website)"],
   "socialProfiles": {
-    "linkedin": "LinkedIn URL if known",
-    "twitter": "Twitter URL if known",
-    "facebook": "Facebook URL if known"
+    "linkedin": "LinkedIn URL if found",
+    "twitter": "Twitter URL if found",
+    "facebook": "Facebook URL if found"
   },
   "financials": {
     "revenueRange": "Revenue estimate or 'Not available'",
@@ -104,26 +195,29 @@ Return a JSON object with this EXACT structure (no markdown, just JSON):
     "teamSize": "Team size estimate or 'Not available'"
   },
   "markets": {
-    "primary": "Primary market",
-    "targetAudience": "Who they sell to"
+    "primary": "Primary market (infer from website)",
+    "targetAudience": "Who they sell to (infer from content)"
   },
-  "confidence": "${searchResults ? 'high' : 'medium'}"
+  "confidence": "${websiteData || searchResults ? 'high' : 'medium'}"
 }
 
-IMPORTANT RULES:
-1. If you have search results above, use them as the primary source
-2. Use the website URL from search results
-3. Be honest - if you don't know something, use "Not specified" or "Not available"
-4. For well-known companies, provide detailed information
-5. If the company is unknown or you're unsure, still return success:true but with limited data
-6. NEVER return success:false unless the company name is clearly invalid
+CRITICAL RULES FOR SUCCESS:
+1. ${websiteData ? 'USE THE VERIFIED WEBSITE CONTENT ABOVE as your primary source' : 'Use search results if available'}
+2. ALWAYS return success:true (even with limited data)
+3. Extract company name, industry, description from the website content
+4. Use "${websiteUrl}" as the website URL
+5. Be honest - if you don't know something, use "Not specified" or "Not available"
+6. Infer industry and services from the website content
+7. NEVER return success:false - always try to extract what you can
 
-Even if information is limited, always try to return a profile with whatever data is available.`;
+Even with minimal information, return a profile with whatever is available.`;
 
   try {
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
+    
+    console.log(`AI Response received for ${companyName}`);
     
     // Extract JSON from response
     let jsonText = text.trim();
@@ -145,22 +239,31 @@ Even if information is limited, always try to return a profile with whatever dat
     jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
     const data = JSON.parse(jsonText);
     
-    if (!data.success) {
+    // Even if AI says success:false, we try to salvage data
+    if (!data.success && !websiteData && !searchResults) {
+      console.log('AI returned success:false, no fallback data available');
       return null;
     }
     
-    // Ensure website from search results is used if available
-    if (searchResults && searchResults.website) {
+    // Force success if we have website or search data
+    if (websiteData || searchResults) {
+      data.success = true;
+    }
+    
+    // Ensure website from verified sources
+    if (websiteData && websiteData.url) {
+      data.website = websiteData.url;
+    } else if (searchResults && searchResults.website) {
       data.website = searchResults.website;
     }
     
     // Transform to expected format
-    return {
+    const profile = {
       companyName: data.companyName || companyName,
-      website: data.website || '',
+      website: data.website || websiteUrl || '',
       location: data.location || 'Not specified',
       industry: data.industry || 'Not specified',
-      description: data.description || 'No description available',
+      description: data.description || websiteData?.description || 'No description available',
       founders: data.founders || [],
       keyPeople: data.keyPeople || [],
       techStack: data.techStack || [],
@@ -170,13 +273,44 @@ Even if information is limited, always try to return a profile with whatever dat
       keywords: [...(data.techStack || []), data.industry].filter(Boolean).join(', '),
       targetAudience: data.markets?.targetAudience || '',
       confidence: data.confidence || 'medium',
-      searchData: searchResults ? {
-        foundViaGoogle: true,
-        topResults: searchResults.results?.length || 0
-      } : { foundViaGoogle: false }
+      searchData: {
+        foundViaGoogle: !!searchResults,
+        websiteVerified: !!websiteData,
+        topResults: searchResults?.results?.length || 0
+      }
     };
+    
+    console.log(`Successfully created profile for ${companyName}`);
+    return profile;
   } catch (error) {
     console.error('Company search error:', error.message);
+    
+    // If we have website data, create a basic profile even if AI fails
+    if (websiteData) {
+      console.log('AI failed but we have website data, creating basic profile');
+      return {
+        companyName: websiteData.title || companyName,
+        website: websiteData.url,
+        location: 'Not specified',
+        industry: 'Not specified',
+        description: websiteData.description || 'No description available',
+        founders: [],
+        keyPeople: [],
+        techStack: [],
+        socialProfiles: {},
+        financials: {},
+        markets: {},
+        keywords: '',
+        targetAudience: '',
+        confidence: 'medium',
+        searchData: {
+          foundViaGoogle: false,
+          websiteVerified: true,
+          topResults: 0
+        }
+      };
+    }
+    
     throw error;
   }
 }
