@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: leadgen-postgres
+    environment:
+      POSTGRES_USER: leadgen_user
+      POSTGRES_PASSWORD: leadgen_secure_2024
+      POSTGRES_DB: leadgen_ai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgresql-schema.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - leadgen-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadgen_user -d leadgen_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: leadgen-api
+    environment:
+      DB_USER: leadgen_user
+      DB_HOST: postgres
+      DB_NAME: leadgen_ai
+      DB_PASSWORD: leadgen_secure_2024
+      DB_PORT: 5432
+      API_PORT: 3001
+      JWT_SECRET: leadgen-jwt-secret-key-2024-change-in-production
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-AIzaSyChOuW1O5xu_1uF6eUfL0zeDIXuzCaNM3k}
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    networks:
+      - leadgen-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (Nginx serving React build)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: leadgen-frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    networks:
+      - leadgen-network
+    depends_on:
+      - api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  leadgen-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  certbot_certs:
+  certbot_www:
